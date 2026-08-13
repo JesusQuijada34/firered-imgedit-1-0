@@ -1,0 +1,2 @@
+# Dependencias del proyecto firered-imgedit-1-0
+# Generado por PackageMaker
