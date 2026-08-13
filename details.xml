@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<app>
+  <publisher>JesusQuijada34</publisher>
+  <app>firered-imgedit-1-0</app>
+  <name>FireRed Image Edit Fast</name>
+  <version>v1.0-26.08-23.43-AlphaCube</version>
+  <rate>Todas las edades</rate>
+  <author>JesusQuijada34</author>
+  <platform>AlphaCube</platform>
+  <description>Interfaz Gradio de edición de imágenes con modelo FireRed/Qwen descargado bajo demanda</description>
+  <year>2026</year>
+</app>
