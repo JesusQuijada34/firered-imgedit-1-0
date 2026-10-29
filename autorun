@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Autorun script for firered-imgedit-1-0
+/usr/bin/python3 ./firered-imgedit-1-0.py

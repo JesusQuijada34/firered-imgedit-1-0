@@ -1,8 +1,16 @@
 import os
 import gc
+import os
 import gradio as gr
 import numpy as np
-import spaces
+try:
+    import spaces
+except ImportError:
+    class _SpacesFallback:
+        @staticmethod
+        def GPU(function):
+            return function
+    spaces = _SpacesFallback()
 import torch
 import random
 from PIL import Image
@@ -79,33 +87,44 @@ class OrangeRedTheme(Soft):
 orange_red_theme = OrangeRedTheme()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+_pipe = None
 
 print("CUDA_VISIBLE_DEVICES=", os.environ.get("CUDA_VISIBLE_DEVICES"))
 print("torch.__version__ =", torch.__version__)
 print("Using device:", device)
 
-from diffusers import FlowMatchEulerDiscreteScheduler
-from qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
-from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
-from qwenimage.qwen_fa3_processor import QwenDoubleStreamAttnProcessorFA3
 
-dtype = torch.bfloat16
+def get_pipeline():
+    """Load the heavy model only when an inference request is made."""
+    global _pipe
+    if _pipe is not None:
+        return _pipe
+    from diffusers import FlowMatchEulerDiscreteScheduler
+    from qwenimage.pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
+    from qwenimage.transformer_qwenimage import QwenImageTransformer2DModel
+    from qwenimage.qwen_fa3_processor import QwenDoubleStreamAttnProcessorFA3
+    transformer_kwargs = {"torch_dtype": dtype}
+    if device.type == "cuda":
+        transformer_kwargs["device_map"] = "cuda"
+    transformer = QwenImageTransformer2DModel.from_pretrained(
+        "prithivMLmods/Qwen-Image-Edit-Rapid-AIO-V19", **transformer_kwargs
+    )
+    _pipe = QwenImageEditPlusPipeline.from_pretrained(
+        "FireRedTeam/FireRed-Image-Edit-1.1", transformer=transformer, torch_dtype=dtype
+    ).to(device)
+    try:
+        _pipe.transformer.set_attn_processor(QwenDoubleStreamAttnProcessorFA3())
+        print("Flash Attention 3 Processor set successfully.")
+    except Exception as exc:
+        print(f"Warning: Could not set FA3 processor: {exc}")
+    return _pipe
 
-pipe = QwenImageEditPlusPipeline.from_pretrained(
-    "FireRedTeam/FireRed-Image-Edit-1.1", # ---> Prev: FireRedTeam/FireRed-Image-Edit-1.0
-    transformer=QwenImageTransformer2DModel.from_pretrained(
-        "prithivMLmods/Qwen-Image-Edit-Rapid-AIO-V19",
-        torch_dtype=dtype,
-        device_map='cuda'
-    ),
-    torch_dtype=dtype
-).to(device)
 
-try:
-    pipe.transformer.set_attn_processor(QwenDoubleStreamAttnProcessorFA3())
-    print("Flash Attention 3 Processor set successfully.")
-except Exception as e:
-    print(f"Warning: Could not set FA3 processor: {e}")
+def clear_memory():
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 MAX_SEED = np.iinfo(np.int32).max
 
@@ -139,8 +158,8 @@ def infer(
     steps,
     progress=gr.Progress(track_tqdm=True)
 ):
-    gc.collect()
-    torch.cuda.empty_cache()
+    clear_memory()
+    pipe = get_pipeline()
 
     if not images:
         raise gr.Error("Please upload at least one image to edit.")
@@ -192,8 +211,7 @@ def infer(
     except Exception as e:
         raise e
     finally:
-        gc.collect()
-        torch.cuda.empty_cache()
+        clear_memory()
 
 @spaces.GPU
 def infer_example(images, prompt):
